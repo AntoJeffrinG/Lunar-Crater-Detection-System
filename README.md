@@ -1,4 +1,4 @@
-#🚀 Automated Lunar Crater Detection using Chandrayaan-2’s TMC-2 Images 🌑
+🚀 Automated Lunar Crater Detection using Chandrayaan-2’s TMC-2 Images 🌑
 
 Excited to share my latest project inspired by research on Automated Lunar Crater Detection using images from Chandrayaan-2’s Terrain Mapping Camera-2 (TMC-2). Leveraging deep learning, I’ve built a system based on U-Net with a ResNet18 backbone to identify and segment lunar craters from high-resolution satellite images.
 
