@@ -30,22 +30,18 @@ class LunarCraterDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
-    #if necessary. if other format
     def _convert_to_target_format(self, img):
         if self.target_format and not img.format.lower() == self.target_format:
             img = img.convert("RGB")  # RGB
         return img
 
     def __getitem__(self, idx):
-        # Load
         image = Image.open(self.image_paths[idx])
         mask = Image.open(self.mask_paths[idx])
 
-        # Convert to target format(if neces)
         image = self._convert_to_target_format(image)
-        mask = mask.convert("L")#grayscale
+        mask = mask.convert("L")
 
-        #transformationss
         if self.image_transform:
             image = self.image_transform(image)
         if self.mask_transform:
@@ -53,23 +49,17 @@ class LunarCraterDataset(Dataset):
 
         return image, mask
 
-
-
-# Data transformations
-#image
 image_transform = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-# masks
 mask_transform = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.ToTensor()
 ])
 
-#load data,create DataLoade
 from torch.utils.data import DataLoader
 
 
@@ -78,38 +68,32 @@ train_mask_dir = "train_mask_dir"
 val_image_dir = "test_image_dir"
 val_mask_dir = "test_image_dir"
 
-#  Dataset
 train_dataset = LunarCraterDataset(train_image_dir, train_mask_dir, image_transform=image_transform, mask_transform=mask_transform)
 val_dataset = LunarCraterDataset(val_image_dir, val_mask_dir, image_transform=image_transform, mask_transform=mask_transform)
 
-# DataLoader
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
 val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4)
 
-#Unet architecture with ResNet backbone
+#Unet architecture withe Resnet backbone
 class ResNetUNet(nn.Module):
     def __init__(self, num_classes):
         super(ResNetUNet, self).__init__()
 
-        # Pretrained ResNet18 (imaggenet dataset)
         base_model = models.resnet18(pretrained=True)
         self.base_layers = list(base_model.children())
 
-        # Encoder
         self.enc1 = nn.Sequential(*self.base_layers[:3])
         self.enc2 = nn.Sequential(*self.base_layers[3:5])
         self.enc3 = self.base_layers[5]
         self.enc4 = self.base_layers[6]
         self.enc5 = self.base_layers[7]
 
-        # Decoder
         self.up5 = self._upsample(512, 256)
         self.up4 = self._upsample(256, 128)
         self.up3 = self._upsample(128, 64)
         self.up2 = self._upsample(64, 64)
         self.up1 = self._upsample(64, 32)
 
-        # Final
         self.final = nn.Conv2d(32, num_classes, kernel_size=1)
 
     def _upsample(self, in_channels, out_channels):
@@ -120,14 +104,12 @@ class ResNetUNet(nn.Module):
         )
 
     def forward(self, x):
-        # Encoder forward pass
         enc1 = self.enc1(x)
         enc2 = self.enc2(enc1)
         enc3 = self.enc3(enc2)
         enc4 = self.enc4(enc3)
         enc5 = self.enc5(enc4)
 
-        # Decoder forward pass
         dec5 = self.up5(enc5)
         dec4 = self.up4(dec5 + enc4)
         dec3 = self.up3(dec4 + enc3)
@@ -143,11 +125,9 @@ model = ResNetUNet(num_classes=2).to(device)
 import os
 from tqdm import tqdm
 
-# Loss and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
-# Save checkpoint
 def save_checkpoint(model, optimizer, epoch, step, checkpoint_dir="checkpoints"):
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
@@ -160,7 +140,6 @@ def save_checkpoint(model, optimizer, epoch, step, checkpoint_dir="checkpoints")
     }, checkpoint_path)
     print(f"Checkpoint saved at {checkpoint_path}")
 
-# Load checkpoint
 def load_checkpoint(model, optimizer, checkpoint_path):
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
@@ -170,7 +149,6 @@ def load_checkpoint(model, optimizer, checkpoint_path):
     print(f"Resumed from checkpoint: {checkpoint_path} (Epoch: {start_epoch}, Step: {start_step})")
     return start_epoch, start_step
 
-# Train
 def train_one_epoch_with_checkpoint(model, train_loader, criterion, optimizer, device, epoch, checkpoint_steps=500):
     model.train()
     epoch_loss = 0
@@ -191,7 +169,7 @@ def train_one_epoch_with_checkpoint(model, train_loader, criterion, optimizer, d
 
             pbar.set_postfix({"loss": loss.item(), "step": step})
 
-            # Save checkpoint every 500 steps
+            #every 500 steps - save
             if step % checkpoint_steps == 0:
                 save_checkpoint(model, optimizer, epoch, step)
 
@@ -219,8 +197,7 @@ best_loss = float('inf')
 start_epoch = 0
 start_step = 0
 
-# Checkpoint path to resume from
-checkpoint_path = ""  # Replace with the actual path if resuming
+checkpoint_path = "" 
 if checkpoint_path:
     start_epoch, start_step = load_checkpoint(model, optimizer, checkpoint_path)
 
@@ -228,19 +205,17 @@ step = start_step
 for epoch in range(start_epoch, num_epochs):
     print(f"Epoch {epoch+1}/{num_epochs}")
 
-    # Training
     train_loss = train_one_epoch_with_checkpoint(
         model, train_loader, criterion, optimizer, device, epoch, checkpoint_steps=500
     )
 
-    # Validation
     val_loss = validate(model, val_loader, criterion, device)
     print(f"Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
 
     # Save checkpointp
     save_checkpoint(model, optimizer, epoch, step)
 
-#load
+
 def load_model_for_inference(model, checkpoint_path, device='cuda'):
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
@@ -249,22 +224,19 @@ def load_model_for_inference(model, checkpoint_path, device='cuda'):
 
     return model
 
-#load from checkpoint
-checkpoint_path = '/content/checkpoint_epoch2_step500.pth'#replace with actual path
+checkpoint_path = '/content/checkpoint_epoch2_step500.pth'
 model = load_model_for_inference(model, checkpoint_path, device)
 
 from PIL import Image
 import matplotlib.pyplot as plt
 from torchvision import transforms
 
-# Transform
 image_transform = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-# Load image
 image_path = '/content/drive/MyDrive/images/100_0_png.rf.d8cf68fffa427fdd46f70a8dfbdde753.jpg'
 image = Image.open(image_path).convert('RGB')  # RGB
 
@@ -283,7 +255,6 @@ import torch
 import matplotlib.pyplot as plt
 from torchvision import transforms
 
-#mage_tensor = transforms.ToTensor()(image).unsqueeze(0)  # Convert image to tensor and add batch dimension
 model.to(device)
 with torch.no_grad():
     outputs = model(image_tensor)
@@ -293,7 +264,7 @@ predicted_mask = predicted_mask.squeeze(0).cpu().numpy()
 
 fig, ax = plt.subplots(1, 2, figsize=(12, 6))
 
-ax[0].imshow(image)  # Assuming `image` is a PIL image
+ax[0].imshow(image) 
 ax[0].set_title("Input Image")
 ax[0].axis('off')
 
@@ -312,7 +283,6 @@ def process_and_display(binary_mask_array, original_image):
     if binary_mask_array.dtype != np.bool_:
         binary_mask_array = binary_mask_array > 0
 
-    #binary mask array toPIL Image
     mask = Image.fromarray((binary_mask_array * 255).astype(np.uint8))
     original_image = original_image.convert("RGBA")
 
@@ -320,21 +290,17 @@ def process_and_display(binary_mask_array, original_image):
 
     mask_array = np.array(mask) > 0
 
-    # Create a transparent image for bounding boxes
     transparent_image = Image.new("RGBA", original_image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(transparent_image)
 
-    # Find bounding boxes in the binary mask
     labeled, num_features = ndimage.label(mask_array)
     objects = ndimage.find_objects(labeled)
 
-    # Draw bounding boxes around white regions
     for obj_slice in objects:
         x_min, x_max = obj_slice[1].start, obj_slice[1].stop
         y_min, y_max = obj_slice[0].start, obj_slice[0].stop
-        draw.rectangle([(x_min, y_min), (x_max, y_max)], outline=(255, 0, 0, 255), width=2)  # Red boxes
-
-    # Superimpose
+        draw.rectangle([(x_min, y_min), (x_max, y_max)], outline=(255, 0, 0, 255), width=2) 
+        
     result = Image.alpha_composite(original_image, transparent_image)
 
 
